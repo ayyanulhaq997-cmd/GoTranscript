@@ -7,8 +7,8 @@ export async function middleware(request: NextRequest) {
     });
 
     const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        process.env.NEXT_PUBLIC_SUPABASE_URL || "https://dummy_url_for_build.supabase.co",
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "dummy_key_for_build",
         {
             cookies: {
                 getAll() {
@@ -34,18 +34,39 @@ export async function middleware(request: NextRequest) {
         data: { user },
     } = await supabase.auth.getUser();
 
-    // Protect /dashboard and its subroutes
-    if (request.nextUrl.pathname.startsWith("/dashboard")) {
-        if (!user) {
-            const url = request.nextUrl.clone();
-            url.pathname = "/auth/signin";
-            return NextResponse.redirect(url);
-        }
+    const path = request.nextUrl.pathname;
+
+    // 1. Define Public Routes
+    const isPublicRoute =
+        path === "/" ||
+        path.startsWith("/auth") ||
+        path.startsWith("/api") ||
+        path.startsWith("/_next") ||
+        path.endsWith(".ico") ||
+        path.endsWith(".svg") ||
+        path.endsWith(".png") ||
+        path.endsWith(".jpg");
+
+    // 2. Define Protected Routes
+    const isProtectedRoute =
+        path.startsWith("/dashboard") ||
+        path.startsWith("/upload") ||
+        path.startsWith("/jobs") ||
+        path.startsWith("/admin") ||
+        path.startsWith("/payment");
+
+    // 3. Logic for Protected Routes
+    if (isProtectedRoute && !user) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/auth/signin";
+        // Pass original path as redirect param if you want to be fancy later
+        return NextResponse.redirect(url);
     }
 
-    // Prevent logged in users from seeing auth pages
-    if (request.nextUrl.pathname.startsWith("/auth")) {
-        if (user) {
+    // 4. Logic for Auth Routes (prevent double login)
+    if (path.startsWith("/auth") && user) {
+        // Allow signout to still happen if it's a route
+        if (path !== "/auth/signout") {
             const url = request.nextUrl.clone();
             url.pathname = "/dashboard";
             return NextResponse.redirect(url);
